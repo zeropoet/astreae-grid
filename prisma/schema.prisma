@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Node {
+  id                  String   @id @default(uuid())
+  xPosition           Float
+  yPosition           Float
+  ringIndex           Int
+  isDormant           Boolean  @default(false)
+  embedding           Float[]  // store as float array (simplified)
+  semanticCandidates  Json?
+  structuralDegree    Int      @default(0)
+}
+
+model NodeConnection {
+  id          String  @id @default(uuid())
+  fromNodeId  String
+  toNodeId    String
+  type        String  // "STRUCTURAL"
+  weight      Float
+  stability   Float   @default(0)
+}
+
+model GridState {
+  id             String @id @default(uuid())
+  currentRadius  Float
+}
