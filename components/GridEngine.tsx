@@ -3,6 +3,13 @@
 import { useEffect, useRef } from "react"
 import type p5 from "p5"
 
+const HELIOS_BACKGROUND = [12, 16, 30] as const
+const HELIOS_TRAIL_WARM = [255, 193, 120] as const
+const HELIOS_TRAIL_COOL = [126, 208, 255] as const
+const HELIOS_BODY_WARM = [255, 220, 166] as const
+const HELIOS_BODY_COOL = [155, 226, 255] as const
+const HELIOS_SUN_STROKE = [245, 240, 219] as const
+
 type GridNode = {
     bx: number
     by: number
@@ -30,6 +37,8 @@ export default function GridEngine() {
             let spacingY = 0
             let spacingDiag = 0
             let nodes: GridNode[] = []
+            let facetSignalPrev = new Float32Array(0)
+            let facetGlow = new Float32Array(0)
             let drift = 0
             let pointerX = 0
             let pointerY = 0
@@ -38,6 +47,7 @@ export default function GridEngine() {
             let pointerReady = false
 
             const indexOf = (r: number, c: number) => r * cols + c
+            const facetIndexOf = (r: number, c: number) => r * (cols - 1) + c
 
             function viewport() {
                 return {
@@ -52,10 +62,10 @@ export default function GridEngine() {
                 const area = width * height
                 const baselineArea = 1440 * 900
                 const densityScale = Math.pow(area / baselineArea, 0.1)
-                const baseSpacing = Math.max(22, Math.min(52, Math.floor(unit / 22)))
+                const baseSpacing = Math.max(15, Math.min(42, Math.floor(unit / 28)))
                 const responsiveSpacing = Math.max(
-                    20,
-                    Math.min(56, baseSpacing / densityScale)
+                    14,
+                    Math.min(46, baseSpacing / densityScale)
                 )
 
                 const aspect = width / Math.max(1, height)
@@ -103,6 +113,10 @@ export default function GridEngine() {
                         })
                     }
                 }
+
+                const facetCount = Math.max(0, (rows - 1) * (cols - 1))
+                facetSignalPrev = new Float32Array(facetCount)
+                facetGlow = new Float32Array(facetCount)
             }
 
             function pointerIsActive() {
@@ -140,7 +154,11 @@ export default function GridEngine() {
                 canvas.style("top", "0")
                 canvas.style("width", "100%")
                 canvas.style("height", "100%")
-                p.background(0)
+                p.background(
+                    HELIOS_BACKGROUND[0],
+                    HELIOS_BACKGROUND[1],
+                    HELIOS_BACKGROUND[2]
+                )
                 rebuildGrid()
             }
 
@@ -171,14 +189,21 @@ export default function GridEngine() {
                 } else {
                     pointerPrevX = pointerX
                     pointerPrevY = pointerY
-                    pointerX += (focus.x - pointerX) * (pulling ? 0.42 : 0.14)
-                    pointerY += (focus.y - pointerY) * (pulling ? 0.42 : 0.14)
+                    pointerX = focus.x
+                    pointerY = focus.y
                 }
 
-                const moveX = pointerX - pointerPrevX
-                const moveY = pointerY - pointerPrevY
+                const moveLimit = Math.max(0.6, Math.min(spacingX, spacingY) * 0.09)
+                const rawMoveX = pointerX - pointerPrevX
+                const rawMoveY = pointerY - pointerPrevY
+                const moveX = Math.max(-moveLimit, Math.min(moveLimit, rawMoveX))
+                const moveY = Math.max(-moveLimit, Math.min(moveLimit, rawMoveY))
 
-                p.background(0, 0, 0, 55)
+                p.background(
+                    HELIOS_BACKGROUND[0],
+                    HELIOS_BACKGROUND[1],
+                    HELIOS_BACKGROUND[2]
+                )
                 p.translate(centerX, centerY)
 
                 const ax = new Float32Array(nodes.length)
@@ -261,8 +286,8 @@ export default function GridEngine() {
                         const influence = (1 - d / radius) ** 2
                         const dirX = -dx / d
                         const dirY = -dy / d
-                        const pullForce = (pulling ? 1.35 : 0.28) * influence
-                        const dragForce = (pulling ? 9 : 1.2) * influence
+                        const pullForce = (pulling ? 1.2 : 0.24) * influence
+                        const dragForce = (pulling ? 6.5 : 0.9) * influence
                         ax[i] += dirX * pullForce + moveX * dragForce
                         ay[i] += dirY * pullForce + moveY * dragForce
                     }
@@ -316,6 +341,70 @@ export default function GridEngine() {
                     node.by += (node.y - node.by) * settle + moveY * 0.22 * influence
                 }
 
+                p.noStroke()
+                for (let r = 0; r + 1 < rows; r += 1) {
+                    for (let c = 0; c + 1 < cols; c += 1) {
+                        const a = nodes[indexOf(r, c)]
+                        const b = nodes[indexOf(r, c + 1)]
+                        const cNode = nodes[indexOf(r + 1, c + 1)]
+                        const d = nodes[indexOf(r + 1, c)]
+                        const fIndex = facetIndexOf(r, c)
+
+                        const diagMain = Math.hypot(cNode.x - a.x, cNode.y - a.y)
+                        const diagCross = Math.hypot(d.x - b.x, d.y - b.y)
+                        const shear = (diagMain - diagCross) / Math.max(1, spacingDiag)
+
+                        const edgeTop = Math.hypot(b.x - a.x, b.y - a.y) - spacingX
+                        const edgeBottom = Math.hypot(cNode.x - d.x, cNode.y - d.y) - spacingX
+                        const edgeRight = Math.hypot(cNode.x - b.x, cNode.y - b.y) - spacingY
+                        const edgeLeft = Math.hypot(d.x - a.x, d.y - a.y) - spacingY
+                        const strain =
+                            (edgeTop + edgeBottom + edgeRight + edgeLeft) /
+                            (2 * Math.max(1, spacingX + spacingY))
+
+                        const signal = shear + strain * 0.42
+                        const prevSignal = facetSignalPrev[fIndex]
+                        const delta = signal - prevSignal
+                        const signFlip =
+                            Math.sign(signal) !== 0 &&
+                            Math.sign(prevSignal) !== 0 &&
+                            Math.sign(signal) !== Math.sign(prevSignal)
+                        const flipStrength = signFlip ? Math.min(1, Math.abs(delta) * 7.5) : 0
+                        const excitation = Math.max(
+                            0,
+                            Math.abs(delta) - 0.032
+                        )
+
+                        facetGlow[fIndex] = Math.min(
+                            1,
+                            facetGlow[fIndex] * 0.9 + flipStrength * 0.95 + excitation * 1.6
+                        )
+                        facetSignalPrev[fIndex] = signal
+
+                        const glow = facetGlow[fIndex]
+                        if (glow < 0.05) continue
+
+                        const warm = signal < 0
+                        const alpha = 4 + glow * 58
+                        if (warm) {
+                            p.fill(
+                                HELIOS_TRAIL_WARM[0],
+                                HELIOS_TRAIL_WARM[1],
+                                HELIOS_TRAIL_WARM[2],
+                                alpha
+                            )
+                        } else {
+                            p.fill(
+                                HELIOS_TRAIL_COOL[0],
+                                HELIOS_TRAIL_COOL[1],
+                                HELIOS_TRAIL_COOL[2],
+                                alpha
+                            )
+                        }
+                        p.quad(a.x, a.y, b.x, b.y, cNode.x, cNode.y, d.x, d.y)
+                    }
+                }
+
                 p.strokeWeight(0.9)
                 for (let r = 0; r < rows; r += 1) {
                     for (let c = 0; c < cols; c += 1) {
@@ -343,11 +432,21 @@ export default function GridEngine() {
                         const alpha = 14 + glow * 22 + strain * 42
 
                         if (right) {
-                            p.stroke(235, 235, 235, alpha)
+                            p.stroke(
+                                HELIOS_SUN_STROKE[0],
+                                HELIOS_SUN_STROKE[1],
+                                HELIOS_SUN_STROKE[2],
+                                alpha
+                            )
                             p.line(node.x, node.y, right.x, right.y)
                         }
                         if (down) {
-                            p.stroke(235, 235, 235, alpha)
+                            p.stroke(
+                                HELIOS_SUN_STROKE[0],
+                                HELIOS_SUN_STROKE[1],
+                                HELIOS_SUN_STROKE[2],
+                                alpha
+                            )
                             p.line(node.x, node.y, down.x, down.y)
                         }
                     }
@@ -358,8 +457,13 @@ export default function GridEngine() {
                     const node = nodes[i]
                     const velocity = Math.min(1, Math.hypot(node.vx, node.vy) / 3.2)
                     const pulse = 0.5 + 0.5 * Math.sin(t * 2.2 + node.phase)
-                    p.fill(248, 248, 248, 42 + pulse * 60 + velocity * 90)
-                    p.circle(node.x, node.y, 1.1 + pulse * 1.4 + velocity * 1.8)
+                    const warmMix = 0.5 + 0.5 * Math.sin(t * 0.7 + node.phase * 0.75)
+                    const nodeR = p.lerp(HELIOS_BODY_COOL[0], HELIOS_BODY_WARM[0], warmMix)
+                    const nodeG = p.lerp(HELIOS_BODY_COOL[1], HELIOS_BODY_WARM[1], warmMix)
+                    const nodeB = p.lerp(HELIOS_BODY_COOL[2], HELIOS_BODY_WARM[2], warmMix)
+                    p.fill(nodeR, nodeG, nodeB, 42 + pulse * 60 + velocity * 90)
+                    const size = 0.95 + pulse * 1.25 + velocity * 1.7
+                    p.square(node.x - size * 0.5, node.y - size * 0.5, size)
                 }
             }
         }
