@@ -1,4 +1,4 @@
-# Astraea Grid
+# Axis Grid
 
 A generative lattice animation built with `p5.js`, served through a minimal `Next.js` App Router shell.
 
@@ -11,7 +11,7 @@ A generative lattice animation built with `p5.js`, served through a minimal `Nex
 - Scales lattice density and cell ratio with viewport size/aspect
 - Exports as a static site (`out/`) for GitHub Pages
 
-Core implementation lives in `/Users/zeropoet/WebstormProjects/astreae-grid/components/GridEngine.tsx`.
+Core implementation lives in `/Users/zeropoet/WebstormProjects/axis-grid/components/GridEngine.tsx`.
 
 ## Tech Stack
 
@@ -60,11 +60,11 @@ Open `http://localhost:3000`.
 
 ## Static Export and GitHub Pages
 
-Static export is enabled in `/Users/zeropoet/WebstormProjects/astreae-grid/next.config.mjs` via `output: "export"`.
+Static export is enabled in `/Users/zeropoet/WebstormProjects/axis-grid/next.config.mjs` via `output: "export"`.
 
 During GitHub Actions runs (`GITHUB_ACTIONS=true`), `basePath` and `assetPrefix` are set to `/<repo>/` so the site works correctly on GitHub Pages.
 
-If you rename the repository, update the `repo` value in `/Users/zeropoet/WebstormProjects/astreae-grid/next.config.mjs`.
+If you rename the repository, update the `repo` value in `/Users/zeropoet/WebstormProjects/axis-grid/next.config.mjs`.
 
 ## Development Notes
 
